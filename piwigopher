@@ -1,0 +1,55 @@
+#!/usr/bin/ruby
+
+require './piwigo-mini.rb'
+
+PIWIGO_URL = "https://photo.sen.cx"
+
+query_string = ENV['QUERY_STRING']
+this_host = ENV['SERVER_HOST']
+this_port = ENV['SERVER_PORT']
+selector = ENV['SELECTOR']
+base_selector = selector.split('?')[0] # selector minus any query string
+
+api = PiwigoMini::Api.new(PIWIGO_URL)
+
+if(query_string == "") then
+  # generate a list of albums starting at the root
+  api.albums.each do |album|
+    puts "1#{album.name}\t#{selector}?#{album.id}\t#{this_host}\t#{this_port}"
+    $stdout.flush
+  end
+elsif(query_string.start_with?('i')) then
+  # retrieve an image
+  image_id = query_string[1..-1].to_i
+  print api.image(image_id).image_data
+  Kernel.exit # don't output the Gopher footer
+else
+  # retrieve the contents of an album, potentially several albums deep
+  path = query_string.split('+')
+  album = api.album(path[-1].to_i)
+  if(query_string.include? '+') then
+    # there's a parent album, add a link to go back to that
+    parent_album = api.album(path[-2].to_i)
+    parent_path = path[0..-2].join('+')
+    puts "1Back to #{parent_album.name}\t#{base_selector}?#{parent_path}\t#{this_host}\t#{this_port}"
+  else
+    # no parent album, add a link to the root album
+    puts "1Back to root\t#{selector.split('?')[0]}\t#{this_host}\t#{this_port}"
+  end
+
+  if(album.sub_albums) then
+    album.sub_albums.each do |album|
+      next if album.id == path[-1].to_i # ignore the "." album
+      puts "1#{album.name}\t#{selector}+#{album.id}\t#{this_host}\t#{this_port}"
+      $stdout.flush
+    end
+  end
+  if(album.images) then
+    album.images.each do |image|
+      puts "I#{image.name}\t#{base_selector}?i#{image.id}\t#{this_host}\t#{this_port}"
+      $stdout.flush
+    end
+  end
+end
+
+puts "."
